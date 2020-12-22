@@ -259,9 +259,9 @@ Vector3 rotate_point(Vector3 center, Vector3 point, float angle) {
 	return Vector3(rotatedX, point.y, rotatedZ);
 }
 
-void VoxelTool::do_ravine(Vector3 center, float angle) {
-	float ravine_width = 6.0f;
-	float ravine_length = 100.0f;
+void VoxelTool::do_ravine(Vector3 center, float angle, float ravine_spread = 1.0f, float ravine_length = 100.0f) {
+	float ravine_width = ravine_length/10.0f * ravine_spread;
+
 	float min_x = max(ravine_width * 2, Math::abs((ravine_length)*Math::sin(angle))) * (Math::sin(angle) > 0 ? -1.0f : 1.0f);
 	float min_z = max(ravine_width * 2, Math::abs((ravine_length)*Math::cos(angle))) * (Math::cos(angle) > 0 ? 1.0f : -1.0f);
 
@@ -300,11 +300,11 @@ void VoxelTool::do_ravine(Vector3 center, float angle) {
 	PoolVector3Array ravine_points = PoolVector3Array();
 	//right side
 	ravine_points.push_back(Vector3(0, 0, 0));
-	ravine_points.push_back(Vector3(1, 0, 10));
+	ravine_points.push_back(Vector3(ravine_spread, 0, 10));
 	ravine_points.push_back(Vector3(0, -1, 0));
 	//left side
 	ravine_points.push_back(Vector3(0, 0, 0));
-	ravine_points.push_back(Vector3(-1, 0, 10));
+	ravine_points.push_back(Vector3(-ravine_spread, 0, 10));
 	ravine_points.push_back(Vector3(0, -1, 0));
 
 	for (int i = 0; i < ravine_points.size(); i++) {

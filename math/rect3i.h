@@ -105,8 +105,8 @@ public:
 	inline void for_each_cell(A a) const {
 		Vector3i max = pos + size;
 		Vector3i p;
-		for (p.z = pos.z; p.z < max.z; ++p.z) {
-			for (p.y = pos.y; p.y < max.y; ++p.y) {
+		for (p.y = pos.y; p.y < max.y; ++p.y) {
+			for (p.z = pos.z; p.z < max.z; ++p.z) {
 				for (p.x = pos.x; p.x < max.x; ++p.x) {
 					a(p);
 				}
