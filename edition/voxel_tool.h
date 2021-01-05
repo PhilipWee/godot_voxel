@@ -2,6 +2,7 @@
 #define VOXEL_TOOL_H
 
 #include "../math/rect3i.h"
+#include <core/image.h>
 #include <core/reference.h>
 
 class VoxelBuffer;
@@ -47,6 +48,15 @@ public:
 	uint64_t get_voxel(Vector3i pos);
 	float get_voxel_f(Vector3i pos);
 
+	void set_min_height(float height);
+	float get_min_height();
+
+	void set_height_range(float height);
+	float get_height_range();
+
+	void set_orig_image(Ref<Image> im);
+	Ref<Image> get_orig_image() const;
+
 	// The following methods represent one edit each. Pick the correct one for the job.
 	// For example, using `do_box` will be more efficient than calling `do_point` many times.
 	virtual void set_voxel(Vector3i pos, uint64_t v);
@@ -57,6 +67,7 @@ public:
 	virtual void do_sphere(Vector3 center, float radius);
 	virtual void do_box(Vector3i begin, Vector3i end);
 	virtual void do_ravine(Vector3 center, float angle, float ravine_width, float ravine_length);
+	virtual void undo_ravine(Vector3 center, float angle, float ravine_width, float ravine_length);
 
 	virtual void paste(Vector3i pos, Ref<VoxelBuffer> p_voxels, uint64_t mask_value);
 
@@ -93,17 +104,22 @@ private:
 	void _b_do_circle(Vector3 pos, float radius, Vector3 direction) { do_circle(Vector3i(pos), radius, Vector3i(direction)); }
 	void _b_do_sphere(Vector3 pos, float radius) { do_sphere(pos, radius); }
 	void _b_do_box(Vector3 begin, Vector3 end) { do_box(Vector3i(begin), Vector3i(end)); }
-	void _b_do_ravine(Vector3 center, float angle, float ravine_width, float ravine_length) { do_ravine(center, angle, ravine_width, ravine_length); }
+	void _b_do_ravine(Vector3 center, float angle, float ravine_spread, float ravine_length) { do_ravine(center, angle, ravine_spread, ravine_length); }
+	void _b_undo_ravine(Vector3 center, float angle, float ravine_spread, float ravine_length) { undo_ravine(center, angle, ravine_spread, ravine_length); }
 	void _b_paste(Vector3 pos, Ref<Reference> voxels, int mask_value) { paste(Vector3i(pos), voxels, mask_value); }
 
 	Variant _b_get_voxel_metadata(Vector3 pos) { return get_voxel_metadata(Vector3i(pos)); }
 	void _b_set_voxel_metadata(Vector3 pos, Variant meta) { return set_voxel_metadata(Vector3i(pos), meta); }
+
+	Ref<Image> _orig_im;
 
 protected:
 	uint64_t _value = 0;
 	uint64_t _eraser_value = 0; // air
 	int _channel = 0;
 	Mode _mode = MODE_ADD;
+	float _min_height = 0.0f;
+	float _height_range = 0.0f;
 };
 
 VARIANT_ENUM_CAST(VoxelTool::Mode)

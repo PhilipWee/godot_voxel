@@ -183,6 +183,15 @@ void VoxelTool::do_sphere(Vector3 center, float radius) {
 
 	_post_edit(box);
 }
+
+void VoxelTool::set_orig_image(Ref<Image> im) {
+	_orig_im = im;
+}
+
+Ref<Image> VoxelTool::get_orig_image() const {
+	return _orig_im;
+}
+
 //Note that the name is a minomer: If its not convex it still works
 class ConvexChecker {
 public:
@@ -259,7 +268,27 @@ Vector3 rotate_point(Vector3 center, Vector3 point, float angle) {
 	return Vector3(rotatedX, point.y, rotatedZ);
 }
 
-void VoxelTool::do_ravine(Vector3 center, float angle, float ravine_spread = 1.0f, float ravine_length = 100.0f) {
+inline PoolVector3Array get_ravine_points(Vector3 center, float angle, float ravine_spread = 1.0f) {
+	PoolVector3Array ravine_points = PoolVector3Array();
+	//right side
+	ravine_points.push_back(Vector3(0, 0, 0));
+	ravine_points.push_back(Vector3(ravine_spread, 0, 10));
+	ravine_points.push_back(Vector3(0, -1, 0));
+	//left side
+	ravine_points.push_back(Vector3(0, 0, 0));
+	ravine_points.push_back(Vector3(-ravine_spread, 0, 10));
+	ravine_points.push_back(Vector3(0, -1, 0));
+
+	for (int i = 0; i < ravine_points.size(); i++) {
+		ravine_points.set(i, rotate_point(Vector3(0, 0, 0), ravine_points[i], angle));
+		ravine_points.set(i, ravine_points[i] + center);
+
+	}
+
+	return ravine_points;
+}
+
+inline Rect3i get_ravine_box(Vector3 center,float angle, float ravine_spread, float ravine_length) {
 	float ravine_width = ravine_length/10.0f * ravine_spread;
 
 	float min_x = max(ravine_width * 2, Math::abs((ravine_length)*Math::sin(angle))) * (Math::sin(angle) > 0 ? -1.0f : 1.0f);
@@ -292,41 +321,126 @@ void VoxelTool::do_ravine(Vector3 center, float angle, float ravine_spread = 1.0
 
 	ravine_box = Rect3i::from_min_max(box_start, box_end);
 
+	return ravine_box;
+}
+
+inline float get_im_height(Image &im, int x, int y) {
+	//Centralise the image
+	int width = im.get_width();
+	int height = im.get_height();
+	int half_width = floor(float(width)/2);
+	int half_height = floor(float(height)/2);
+
+	if (x < -half_width || x >= half_width) {
+		return 0.0f;
+	} else if (y < -half_height || y >= half_height) {
+		return 0.0f;
+	}
+
+	x+=half_width;
+	y+=half_height;
+
+	return im.get_pixel(x,y).r;
+}
+
+void VoxelTool::do_ravine(Vector3 center, float angle, float ravine_spread = 1.0f, float ravine_length = 100.0f) {
+
+	Rect3i ravine_box = get_ravine_box(center,angle,ravine_spread,ravine_length);
+
 	if (!is_area_editable(ravine_box)) {
 		PRINT_VERBOSE("Area not editable");
 		return;
 	}
 
-	PoolVector3Array ravine_points = PoolVector3Array();
-	//right side
-	ravine_points.push_back(Vector3(0, 0, 0));
-	ravine_points.push_back(Vector3(ravine_spread, 0, 10));
-	ravine_points.push_back(Vector3(0, -1, 0));
-	//left side
-	ravine_points.push_back(Vector3(0, 0, 0));
-	ravine_points.push_back(Vector3(-ravine_spread, 0, 10));
-	ravine_points.push_back(Vector3(0, -1, 0));
-
-	for (int i = 0; i < ravine_points.size(); i++) {
-		ravine_points.set(i, rotate_point(Vector3(0, 0, 0), ravine_points[i], angle));
-		ravine_points.set(i, ravine_points[i] + center);
-
-	}
-
+	PoolVector3Array ravine_points = get_ravine_points(center, angle, ravine_spread);
 	//Make a ravine shaped convex checker
 	ConvexChecker ravine_checker = ConvexChecker(ravine_points);
 
 	//No SDF blending for now
-	ravine_box.for_each_cell([this, center, angle, &ravine_checker](Vector3i pos) {
-		// _set_voxel_f(pos,1.0);
-		Vector3 vec3_pos = Vector3(pos.x, pos.y, pos.z);
-		if (ravine_checker.check_point_in_shape(vec3_pos)) {
-			_set_voxel_f(pos, 1.0);
+	Vector3i pos = ravine_box.pos;
+	Vector3i max = ravine_box.pos+ravine_box.size;
+	Vector3i p;
+
+	
+	//Do Ravine
+	for (p.y = pos.y; p.y < max.y; ++p.y){
+		for (p.x = pos.x; p.x < max.x; ++p.x) {
+			for (p.z = max.z-1; p.z >= pos.z; --p.z) {
+				Vector3 vec3_p = Vector3(p.x, p.y, p.z);
+				if (ravine_checker.check_point_in_shape(vec3_p)) {
+					_set_voxel_f(p, 1.0);
+				}
+			}
 		}
-	});
+	}
 
 	_post_edit(ravine_box);
 }
+
+void VoxelTool::undo_ravine(Vector3 center, float angle, float ravine_spread = 1.0f, float ravine_length = 100.0f) {
+
+	Rect3i ravine_box = get_ravine_box(center,angle,ravine_spread,ravine_length);
+
+	if (!is_area_editable(ravine_box)) {
+		PRINT_VERBOSE("Area not editable");
+		return;
+	}
+
+	PoolVector3Array ravine_points = get_ravine_points(center, angle, ravine_spread);
+	//Make a ravine shaped convex checker
+	ConvexChecker ravine_checker = ConvexChecker(ravine_points);
+
+	//No SDF blending for now
+	Vector3i pos = ravine_box.pos;
+	Vector3i max = ravine_box.pos+ravine_box.size;
+	Vector3i p;
+	
+	//Undo Ravine
+	Image &im = **_orig_im;
+	im.lock();
+
+	print_line("max z");
+	print_line(itos(max.z-1));
+	print_line("min z");
+	print_line(itos(pos.z));
+
+	for (p.z = max.z-1; p.z >= pos.z; --p.z) {
+		for (p.x = pos.x; p.x < max.x; ++p.x) {
+			float height = get_im_height(im,p.x,p.z) * _height_range + _min_height;
+			// print_line("height");
+			// print_line(rtos(height));
+			// print_line("z vals");
+			for (p.y = max.y; p.y >= pos.y ; --p.y){
+				Vector3 vec3_p = Vector3(p.x, p.y, p.z);
+				// && p.z > _min_height
+				// print_line(itos(p.z));
+				if (ravine_checker.check_point_in_shape(vec3_p) && p.y <= height) { //height) {
+					_set_voxel_f(p, -1.0);
+				}
+			}
+		}
+	}
+
+	im.unlock();
+
+	_post_edit(ravine_box);
+}
+
+void VoxelTool::set_min_height(float height) {
+	_min_height = height;
+};
+
+float VoxelTool::get_min_height() {
+	return _min_height;
+};
+
+void VoxelTool::set_height_range(float height) {
+	_height_range = height;
+};
+
+float VoxelTool::get_height_range() {
+	return _height_range;
+};
 
 void VoxelTool::do_box(Vector3i begin, Vector3i end) {
 	Vector3i::sort_min_max(begin, end);
@@ -346,6 +460,8 @@ void VoxelTool::do_box(Vector3i begin, Vector3i end) {
 	} else {
 
 		int value = _mode == MODE_REMOVE ? _eraser_value : _value;
+
+		
 
 		box.for_each_cell([this, value](Vector3i pos) {
 			_set_voxel(pos, value);
@@ -393,6 +509,15 @@ void VoxelTool::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_eraser_value", "v"), &VoxelTool::set_eraser_value);
 	ClassDB::bind_method(D_METHOD("get_eraser_value"), &VoxelTool::get_eraser_value);
 
+	ClassDB::bind_method(D_METHOD("set_min_height", "height"), &VoxelTool::set_min_height);
+	ClassDB::bind_method(D_METHOD("get_min_height"), &VoxelTool::get_min_height);
+
+	ClassDB::bind_method(D_METHOD("set_height_range", "height"), &VoxelTool::set_height_range);
+	ClassDB::bind_method(D_METHOD("get_height_range"), &VoxelTool::get_height_range);
+
+	ClassDB::bind_method(D_METHOD("set_orig_image", "im"), &VoxelTool::set_orig_image);
+	ClassDB::bind_method(D_METHOD("get_orig_image"), &VoxelTool::get_orig_image);
+
 	ClassDB::bind_method(D_METHOD("get_voxel", "pos"), &VoxelTool::_b_get_voxel);
 	ClassDB::bind_method(D_METHOD("get_voxel_f", "pos"), &VoxelTool::_b_get_voxel_f);
 	ClassDB::bind_method(D_METHOD("set_voxel", "pos", "v"), &VoxelTool::_b_set_voxel);
@@ -400,7 +525,8 @@ void VoxelTool::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("do_point", "pos"), &VoxelTool::_b_do_point);
 	ClassDB::bind_method(D_METHOD("do_sphere", "center", "radius"), &VoxelTool::_b_do_sphere);
 	ClassDB::bind_method(D_METHOD("do_box", "begin", "end"), &VoxelTool::_b_do_box);
-	ClassDB::bind_method(D_METHOD("do_ravine", "center", "direction"), &VoxelTool::_b_do_ravine);
+	ClassDB::bind_method(D_METHOD("do_ravine", "center", "angle", "ravine_width", "ravine_length"), &VoxelTool::_b_do_ravine);
+	ClassDB::bind_method(D_METHOD("undo_ravine", "center", "angle", "ravine_width", "ravine_length"), &VoxelTool::_b_undo_ravine);
 
 	ClassDB::bind_method(D_METHOD("set_voxel_metadata", "pos", "meta"), &VoxelTool::_b_set_voxel_metadata);
 	ClassDB::bind_method(D_METHOD("get_voxel_metadata", "pos"), &VoxelTool::_b_get_voxel_metadata);
